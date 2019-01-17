@@ -45,47 +45,6 @@ def _train_matrix(mat: CSR, other: np.ndarray, reg: float):
     return result
 
 
-@njit(parallel=True, nogil=True)
-def _train_implicit_matrix(mat: CSR, other: np.ndarray, reg: float):
-    "One half of an implicit ALS training round."
-    nr = mat.nrows
-    nc = other.shape[0]
-    nf = other.shape[1]
-    assert mat.ncols == nc
-    regmat = np.identity(nf) * reg
-    Ot = other.T
-    OtO = Ot @ other
-    OtOr = OtO + regmat
-    assert OtO.shape[0] == OtO.shape[1]
-    assert OtO.shape[0] == nf
-    result = np.zeros((nr, nf))
-    for i in prange(nr):
-        cols = mat.row_cs(i)
-        if len(cols) == 0:
-            continue
-
-        rates = mat.row_vs(i)
-
-        # we can optimize by only considering the nonzero entries of Cu-I
-        # this means we only need the corresponding matrix columns
-        M = other[cols, :]
-        # Compute M^T C_u M, restricted to these nonzero entries
-        MMT = (M.T.copy() * rates) @ M
-        # assert MMT.shape[0] == ctx.n_features
-        # assert MMT.shape[1] == ctx.n_features
-        # Build the matrix for solving
-        A = OtOr + MMT
-        # Compute RHS - only used columns (p_ui != 0) values needed
-        # Cu is rates + 1 for the cols, so just trim Ot
-        y = Ot[:, cols] @ (rates + 1.0)
-        # and solve
-        _dposv(A, y, True)
-        # assert len(uv) == ctx.n_features
-        result[i, :] = y
-
-    return result
-
-
 class BiasedMF(BiasMFPredictor):
     """
     Biased matrix factorization trained with alternating least squares [ZWSP2008]_.  This is a
@@ -222,6 +181,47 @@ class BiasedMF(BiasMFPredictor):
     def __str__(self):
         return 'als.BiasedMF(features={}, regularization={})'.\
             format(self.features, self.regularization)
+
+
+@njit(parallel=True, nogil=True)
+def _train_implicit_matrix(mat: CSR, other: np.ndarray, reg: float):
+    "One half of an implicit ALS training round."
+    nr = mat.nrows
+    nc = other.shape[0]
+    nf = other.shape[1]
+    assert mat.ncols == nc
+    regmat = np.identity(nf) * reg
+    Ot = other.T
+    OtO = Ot @ other
+    OtOr = OtO + regmat
+    assert OtO.shape[0] == OtO.shape[1]
+    assert OtO.shape[0] == nf
+    result = np.zeros((nr, nf))
+    for i in prange(nr):
+        cols = mat.row_cs(i)
+        if len(cols) == 0:
+            continue
+
+        rates = mat.row_vs(i)
+
+        # we can optimize by only considering the nonzero entries of Cu-I
+        # this means we only need the corresponding matrix columns
+        M = other[cols, :]
+        # Compute M^T C_u M, restricted to these nonzero entries
+        MMT = (M.T.copy() * rates) @ M
+        # assert MMT.shape[0] == ctx.n_features
+        # assert MMT.shape[1] == ctx.n_features
+        # Build the matrix for solving
+        A = OtOr + MMT
+        # Compute RHS - only used columns (p_ui != 0) values needed
+        # Cu is rates + 1 for the cols, so just trim Ot
+        y = Ot[:, cols] @ (rates + 1.0)
+        # and solve
+        _dposv(A, y, True)
+        # assert len(uv) == ctx.n_features
+        result[i, :] = y
+
+    return result
 
 
 class ImplicitMF(MFPredictor):

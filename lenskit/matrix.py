@@ -299,6 +299,14 @@ class CSR:
         """
         _csr_sort(self.nrows, self.rowptrs, self.colinds, self.values)
 
+    def sort_keys(self):
+        """
+        Sort CSR rows in nonincreasing order by value.
+
+        .. note:: This method is not available from Numba.
+        """
+        _csr_sort_keys(self.nrows, self.rowptrs, self.colinds, self.values)
+
     def transpose(self, values=True):
         """
         Transpose a CSR matrix.
@@ -353,6 +361,19 @@ def _csr_sort(nrows, rowptrs, colinds, values):
         if ep > sp:
             ord = np.argsort(values[sp:ep])
             ord = ord[::-1]
+            colinds[sp:ep] = colinds[sp + ord]
+            values[sp:ep] = values[sp + ord]
+
+
+@njit(n.void(n.intc, n.int32[:], n.int32[:], n.double[:]),
+      parallel=True, nogil=True)
+def _csr_sort_keys(nrows, rowptrs, colinds, values):
+    assert len(rowptrs) > nrows
+    for i in prange(nrows):
+        sp = rowptrs[i]
+        ep = rowptrs[i+1]
+        if ep > sp:
+            ord = np.argsort(colinds[sp:ep])
             colinds[sp:ep] = colinds[sp + ord]
             values[sp:ep] = values[sp + ord]
 

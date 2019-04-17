@@ -28,17 +28,19 @@ def _sample_pair(rmat):
 
 @n.njit
 def _bpr_iter(rmat, umat, imat, params):
+    nf = umat.shape[1]
     for k in range(rmat.nnz):
         u, i, j = _sample_pair(rmat)
-        uv = umat[u, :].copy()  # copy so updates work properly
+        uv = umat[u, :]
         iv = imat[i, :]
         jv = imat[j, :]
         xuij = np.dot(uv, iv) - np.dot(uv, jv)
         exuij = np.exp(-xuij)
         mult = exuij / (1 + exuij)
-        umat[u, :] += params.learn_rate * (mult * (iv - jv) + params.u_reg * uv)
-        imat[i, :] += params.learn_rate * (mult * uv + params.i_reg * iv)
-        imat[j, :] += params.learn_rate * (-mult * uv + params.j_reg * jv)
+        for f in range(nf):
+            umat[u, f] += params.learn_rate * (mult * (iv[f] - jv[f]) + params.u_reg * uv[f])
+            imat[i, f] += params.learn_rate * (mult * uv[f] + params.i_reg * iv[f])
+            imat[j, f] += params.learn_rate * (-mult * uv[f] + params.j_reg * jv[f])
 
 
 class BPR(MFPredictor):

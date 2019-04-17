@@ -2,7 +2,7 @@ import logging
 from collections import namedtuple
 
 import numpy as np
-import numba as n
+from numba import njit, prange
 
 from .mf_common import MFPredictor
 from ..matrix import sparse_ratings
@@ -13,7 +13,7 @@ _log = logging.getLogger(__name__)
 BPRParams = namedtuple('BPRParams', ['learn_rate', 'u_reg', 'i_reg', 'j_reg'])
 
 
-@n.njit
+@njit
 def _sample_pair(rmat):
     u = np.random.randint(rmat.nrows)
     rated = rmat.row_cs(u)
@@ -26,10 +26,11 @@ def _sample_pair(rmat):
     return u, i, j
 
 
-@n.njit
+@njit(parallel=True)
 def _bpr_iter(rmat, umat, imat, params):
     nf = umat.shape[1]
-    for k in range(rmat.nnz):
+    lr, ur, ir, jr = params
+    for k in prange(rmat.nnz):
         u, i, j = _sample_pair(rmat)
         uv = umat[u, :]
         iv = imat[i, :]
@@ -38,9 +39,9 @@ def _bpr_iter(rmat, umat, imat, params):
         exuij = np.exp(-xuij)
         mult = exuij / (1 + exuij)
         for f in range(nf):
-            umat[u, f] += params.learn_rate * (mult * (iv[f] - jv[f]) + params.u_reg * uv[f])
-            imat[i, f] += params.learn_rate * (mult * uv[f] + params.i_reg * iv[f])
-            imat[j, f] += params.learn_rate * (-mult * uv[f] + params.j_reg * jv[f])
+            umat[u, f] += lr * (mult * (iv[f] - jv[f]) + ur * uv[f])
+            imat[i, f] += lr * (mult * uv[f] + ir * iv[f])
+            imat[j, f] += lr * (-mult * uv[f] + jr * jv[f])
 
 
 class BPR(MFPredictor):

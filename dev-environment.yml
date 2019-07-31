@@ -31,6 +31,9 @@ dependencies:
 - ipykernel
 - jupyter_client
 - matplotlib
+- r-base
+- r-glmnet
+- rpy2
 - pip:
   - nbsphinx
   - recommonmark
